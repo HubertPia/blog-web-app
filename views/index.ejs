@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    />
+    <link rel="stylesheet" href="styles/main.css" />
+    <title>Mój Blog</title>
+  </head>
+  <body data-user-id="<%= userId %>">
+    <header>
+      <h1>Witaj, <%= name %>!</h1>
+      <p>Podziel się swoimi przemyśleniami i historiami</p>
+    </header>
+
+    <main>
+      <div id="flash-message-container"></div>
+
+      <div class="user-menu-container">
+        <button id="userMenuBtn" class="user-menu-btn">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div id="userMenu" class="user-menu">
+          <a href="/profile">Mój profil</a>
+          <a href="/change-password">Zmień hasło</a>
+          <a href="/logout">Wyloguj się</a>
+        </div>
+      </div>
+
+      <button id="openCreateModal">+</button>
+
+      <div id="postsContainer"></div>
+
+      <div
+        id="loadingSpinner"
+        style="text-align: center; padding: 20px; color: white; display: none"
+      >
+        <i class="fas fa-spinner fa-spin fa-2x"></i>
+        <p>Ładowanie postów...</p>
+      </div>
+
+      <div id="modalOverlayCreate" class="modal-overlay"></div>
+      <div id="createPostModal" class="modal">
+        <div class="modal-content">
+          <span class="close" id="closeCreateModal">&times;</span>
+          <h2>Dodaj nowy post</h2>
+          <form class="modal-form">
+            <input type="text" id="createPostTitle" placeholder="Tytuł" />
+            <textarea id="createPostContent" placeholder="Treść..."></textarea>
+            <div class="file-upload-wrapper">
+              <span id="fileName"></span>
+              <label for="createPostImage" class="file-btn"
+                >Wybierz zdjęcie</label
+              >
+              <input type="file" id="createPostImage" accept="image/*" />
+            </div>
+            <button type="button" id="saveCreatePost">Zapisz</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="modalOverlayEdit" class="modal-overlay"></div>
+      <div id="editPostModal" class="modal">
+        <div class="modal-content">
+          <span class="close" id="closeEditModal">&times;</span>
+          <h2>Edytuj post</h2>
+          <form class="modal-form">
+            <input type="hidden" id="editPostId" />
+            <input type="text" id="editPostTitle" placeholder="Tytuł" />
+            <textarea id="editPostContent" placeholder="Treść..."></textarea>
+            <button type="button" id="saveEditPost">Zapisz zmiany</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="imageModal" class="modal-overlay">
+        <span class="close" id="closeImageModal">&times;</span>
+        <img class="modal-image-content" id="enlargedImage" />
+      </div>
+
+      <div id="modalOverlayConfirm" class="modal-overlay"></div>
+      <div id="confirmDeleteModal" class="modal">
+        <div class="modal-content">
+          <h2>Potwierdź usunięcie</h2>
+          <p>
+            Czy na pewno chcesz trwale usunąć ten post? Tej operacji nie można
+            cofnąć.
+          </p>
+          <div class="modal-buttons">
+            <button id="cancelDeleteBtn" class="btn-secondary">Anuluj</button>
+            <button id="confirmDeleteBtn" class="btn-danger">Tak, usuń</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="/scripts/script.js"></script>
+  </body>
+</html>

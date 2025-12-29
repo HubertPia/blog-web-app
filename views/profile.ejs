@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    />
+    <link rel="stylesheet" href="/styles/main.css" />
+    <title>Mój Profil</title>
+  </head>
+  <body data-user-id="<%= userId %>">
+    <header>
+      <h1>Witaj, <%= name %>!</h1>
+      <p>Tutaj znajdziesz wszystkie swoje wpisy i statystyki</p>
+    </header>
+
+    <main>
+      <div id="flash-message-container"></div>
+
+      <div class="user-menu-container">
+        <button id="userMenuBtn" class="user-menu-btn">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div id="userMenu" class="user-menu">
+          <a href="/index">Strona główna</a>
+          <a href="/change-password">Zmień hasło</a>
+          <a href="/logout">Wyloguj się</a>
+        </div>
+      </div>
+
+      <button id="openCreateModal">+</button>
+
+      <div class="profile-stats">
+        <h2>Twoje statystyki</h2>
+        <div class="stats-grid">
+          <div>
+            <strong>Na portalu od:</strong>
+            <span><%= stats.registration_date %></span>
+          </div>
+          <div>
+            <strong>Liczba postów:</strong>
+            <span><%= stats.posts_count %></span>
+          </div>
+          <div>
+            <strong>Otrzymane polubienia:</strong>
+            <span><%= stats.likes_received_count %></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-section">
+        <h2 style="text-align: center; margin-top: 40px">Twoje posty</h2>
+        <div id="postsContainer">
+          <% posts.forEach(post => { %>
+          <div class="post" data-post-id="<%= post.id %>">
+            <div class="post-meta">
+              <span><%= post.creation_date %></span>
+            </div>
+            <h3><%= post.title %></h3>
+            <p><%= post.content %></p>
+            <% if (post.image_url) { %>
+            <img
+              src="<%= post.image_url %>"
+              alt="Obrazek posta"
+              class="post-image"
+            />
+            <% } %>
+            <div class="post-actions">
+              <div>
+                <button
+                  class="editPost"
+                  data-id="<%= post.id %>"
+                  data-title="<%= post.title %>"
+                  data-content="<%= post.content %>"
+                >
+                  Edytuj
+                </button>
+                <button class="deletePost" data-id="<%= post.id %>">
+                  Usuń
+                </button>
+              </div>
+
+              <div style="display: flex; gap: 15px; align-items: center">
+                <button
+                  class="comment-btn toggle-comments"
+                  data-id="<%= post.id %>"
+                >
+                  <i class="far fa-comment-alt"></i>
+                  Komentarze (<span class="comments-count-label"
+                    ><%= post.comments_count || 0 %></span
+                  >)
+                </button>
+                <div class="like-container">
+                  <button
+                    class="like-button <%= post.is_liked ? 'liked' : '' %>"
+                    data-id="<%= post.id %>"
+                  >
+                    <i class="fas fa-heart"></i>
+                  </button>
+                  <span class="likes-count"><%= post.likes_count %></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="comments-section" id="comments-<%= post.id %>">
+              <form class="add-comment-form" data-id="<%= post.id %>">
+                <input
+                  type="text"
+                  name="comment"
+                  placeholder="Napisz komentarz..."
+                  required
+                  autocomplete="off"
+                />
+                <button type="submit">Wyślij</button>
+              </form>
+              <div class="comments-list" id="comments-list-<%= post.id %>">
+                <div
+                  style="
+                    text-align: center;
+                    color: #999;
+                    font-size: 0.9rem;
+                    padding: 10px;
+                  "
+                >
+                  Ładowanie...
+                </div>
+              </div>
+            </div>
+          </div>
+          <% }) %>
+        </div>
+      </div>
+
+      <div id="modalOverlayCreate" class="modal-overlay"></div>
+      <div id="createPostModal" class="modal">
+        <div class="modal-content">
+          <span class="close" id="closeCreateModal">&times;</span>
+          <h2>Dodaj nowy post</h2>
+          <form class="modal-form">
+            <input type="text" id="createPostTitle" placeholder="Tytuł" />
+            <textarea id="createPostContent" placeholder="Treść..."></textarea>
+            <div class="file-upload-wrapper">
+              <span id="fileName"></span>
+              <label for="createPostImage" class="file-btn"
+                >Wybierz zdjęcie</label
+              >
+              <input type="file" id="createPostImage" accept="image/*" />
+            </div>
+            <button type="button" id="saveCreatePost">Zapisz</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="modalOverlayEdit" class="modal-overlay"></div>
+      <div id="editPostModal" class="modal">
+        <div class="modal-content">
+          <span class="close" id="closeEditModal">&times;</span>
+          <h2>Edytuj post</h2>
+          <form class="modal-form">
+            <input type="hidden" id="editPostId" />
+            <input type="text" id="editPostTitle" placeholder="Tytuł" />
+            <textarea id="editPostContent" placeholder="Treść..."></textarea>
+            <button type="button" id="saveEditPost">Zapisz zmiany</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="imageModal" class="modal-overlay">
+        <span class="close" id="closeImageModal">&times;</span>
+        <img class="modal-image-content" id="enlargedImage" />
+      </div>
+
+      <div id="modalOverlayConfirm" class="modal-overlay"></div>
+      <div id="confirmDeleteModal" class="modal">
+        <div class="modal-content">
+          <h2>Potwierdź usunięcie</h2>
+          <p>
+            Czy na pewno chcesz trwale usunąć ten post? Tej operacji nie można
+            cofnąć.
+          </p>
+          <div class="modal-buttons">
+            <button id="cancelDeleteBtn" class="btn-secondary">Anuluj</button>
+            <button id="confirmDeleteBtn" class="btn-danger">Tak, usuń</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="/scripts/script.js"></script>
+  </body>
+</html>

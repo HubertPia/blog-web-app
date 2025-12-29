@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles/main.css" />
+    <title>Witaj na Mój Blog</title>
+</head>
+<body>
+<div class="auth-container">
+    <div class="info-panel">
+        <h1>Witaj na portalu!</h1>
+        <p>Dziel się swoimi historiami, czytaj wpisy innych i stań się częścią naszej społeczności.</p>
+    </div>
+    <div class="form-panel">
+        <% if (locals.success_msg && success_msg.length > 0) { %>
+            <p class="success-message"><%= success_msg %></p>
+        <% } %>
+        <% if (locals.error_msg && error_msg.length > 0) { %>
+            <p class="error-message"><%= error_msg %></p>
+        <% } %>
+        <div id="login-form" <%- showRegister ? 'class="hidden"' : '' %>>
+            <h2>Logowanie</h2>
+            <form action="/login" method="POST">
+                <input type="text" name="login" placeholder="Login" required minlength="3" />
+                <input type="password" name="password" placeholder="Hasło" required minlength="6" />
+                <button type="submit">Zaloguj się</button>
+            </form>
+            <p class="toggle-link">Nie masz konta? <a href="#" id="show-register">Zarejestruj się</a></p>
+        </div>
+        <div id="register-form" <%- !showRegister ? 'class="hidden"' : '' %>>
+            <h2>Rejestracja</h2>
+            <form action="/register" method="POST">
+                <input type="text" name="name" placeholder="Imię" required />
+                <input type="text" name="surname" placeholder="Nazwisko" required />
+                <input type="text" name="login" placeholder="Login" required minlength="3" />
+                <input type="password" name="password" placeholder="Hasło" required minlength="6" />
+                <button type="submit">Zarejestruj się</button>
+            </form>
+            <p class="toggle-link">Masz już konto? <a href="#" id="show-login">Zaloguj się</a></p>
+        </div>
+    </div>
+</div>
+<script src="/scripts/script.js"></script>
+</body>
+</html>
