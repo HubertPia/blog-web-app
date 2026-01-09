@@ -8,6 +8,7 @@ import multer from "multer";
 import path from "path";
 import flash from "connect-flash";
 import { body, validationResult } from "express-validator";
+import nodemailer from "nodemailer"; // <--- NOWOŚĆ: Import nodemailera
 
 const app = express();
 const port = 3000;
@@ -21,6 +22,19 @@ const db = new pg.Client({
   port: process.env.PG_PORT,
 });
 db.connect();
+
+// Konfiguracja wysyłania maili
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false,
+  },
+  // -----------------------------------------------
+});
 
 const storage = multer.diskStorage({
   destination: "public/uploads/",
@@ -73,30 +87,36 @@ app.post(
     }
 
     const { login, password } = req.body;
-    const result = await db.query(
-      "SELECT * FROM users WHERE LOWER(login) = LOWER($1)",
-      [login]
-    );
-    if (result.rows.length === 0) {
-      req.flash(
-        "error_msg",
-        "Nie znaleziono użytkownika lub hasło jest błędne."
+    try {
+      const result = await db.query(
+        "SELECT * FROM users WHERE LOWER(login) = LOWER($1)",
+        [login]
       );
-      return res.redirect("/");
-    }
+      if (result.rows.length === 0) {
+        req.flash(
+          "error_msg",
+          "Nie znaleziono użytkownika lub hasło jest błędne."
+        );
+        return res.redirect("/");
+      }
 
-    const user = result.rows[0];
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) {
-      req.flash(
-        "error_msg",
-        "Nie znaleziono użytkownika lub hasło jest błędne."
-      );
-      return res.redirect("/");
+      const user = result.rows[0];
+      const match = await bcrypt.compare(password, user.password);
+      if (!match) {
+        req.flash(
+          "error_msg",
+          "Nie znaleziono użytkownika lub hasło jest błędne."
+        );
+        return res.redirect("/");
+      }
+      req.session.userId = user.id;
+      req.session.userName = user.name;
+      res.redirect("/index");
+    } catch (err) {
+      console.error(err);
+      req.flash("error_msg", "Błąd serwera");
+      res.redirect("/");
     }
-    req.session.userId = user.id;
-    req.session.userName = user.name;
-    res.redirect("/index");
   }
 );
 
@@ -105,6 +125,7 @@ app.post(
   [
     body("name", "Imię jest wymagane.").trim().notEmpty(),
     body("surname", "Nazwisko jest wymagane.").trim().notEmpty(),
+    body("email", "Podaj poprawny adres e-mail").isEmail().normalizeEmail(), // <--- NOWOŚĆ walidacja maila
     body("login", "Login jest wymagany i musi mieć min. 3 znaki.")
       .trim()
       .isLength({ min: 3 }),
@@ -117,29 +138,159 @@ app.post(
       return res.redirect("/?showRegister=true");
     }
 
-    const { name, surname, login, password } = req.body;
-    const existingLogin = await db.query(
-      "SELECT * FROM users WHERE LOWER(login) = LOWER($1)",
-      [login]
-    );
-    if (existingLogin.rows.length > 0) {
-      req.flash("error_msg", "Ten login jest już zajęty!");
-      return res.redirect("/?showRegister=true");
+    const { name, surname, email, login, password } = req.body;
+
+    try {
+      // Sprawdzamy czy login zajęty
+      const existingLogin = await db.query(
+        "SELECT * FROM users WHERE LOWER(login) = LOWER($1)",
+        [login]
+      );
+      if (existingLogin.rows.length > 0) {
+        req.flash("error_msg", "Ten login jest już zajęty!");
+        return res.redirect("/?showRegister=true");
+      }
+
+      // Sprawdzamy czy email zajęty
+      const existingEmail = await db.query(
+        "SELECT * FROM users WHERE LOWER(email) = LOWER($1)",
+        [email]
+      );
+      if (existingEmail.rows.length > 0) {
+        req.flash("error_msg", "Ten adres e-mail jest już zajęty!");
+        return res.redirect("/?showRegister=true");
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Dodajemy email do inserta
+      await db.query(
+        "INSERT INTO users (name, surname, email, login, password) VALUES ($1, $2, $3, $4, $5)",
+        [name, surname, email, login, hashedPassword]
+      );
+
+      req.flash(
+        "success_msg",
+        "Rejestracja pomyślna! Możesz się teraz zalogować."
+      );
+      res.redirect("/");
+    } catch (err) {
+      console.error(err);
+      req.flash("error_msg", "Wystąpił błąd podczas rejestracji.");
+      res.redirect("/?showRegister=true");
+    }
+  }
+);
+
+// ===== NOWE ROUTY: RESET HASŁA =====
+
+// 1. Formularz wpisania maila
+app.get("/forgot-password", (req, res) => {
+  res.render("forgot-password.ejs");
+});
+
+// 2. Obsługa wysłania kodu
+app.post("/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    req.flash("error_msg", "Podaj adres e-mail");
+    return res.redirect("/forgot-password");
+  }
+
+  try {
+    // Sprawdź czy user istnieje
+    const userRes = await db.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (userRes.rows.length === 0) {
+      // Ze względów bezpieczeństwa można napisać "Jeśli konto istnieje, wysłano kod",
+      // ale dla wygody napiszemy wprost:
+      req.flash("error_msg", "Nie znaleziono konta z takim adresem e-mail.");
+      return res.redirect("/forgot-password");
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Generuj kod (np. 6 cyfr)
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Ustaw czas wygaśnięcia (np. 15 minut)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Zapisz do bazy (najpierw usuń stare kody dla tego maila, żeby nie śmiecić)
+    await db.query("DELETE FROM password_resets WHERE email = $1", [email]);
     await db.query(
-      "INSERT INTO users (name, surname, login, password) VALUES ($1, $2, $3, $4)",
-      [name, surname, login, hashedPassword]
+      "INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)",
+      [email, token, expiresAt]
     );
+
+    // Wyślij maila
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Reset hasła - Mój Blog",
+      text: `Twój kod do resetu hasła to: ${token}\nKod jest ważny przez 15 minut.`,
+    };
+
+    await transporter.sendMail(mailOptions);
 
     req.flash(
       "success_msg",
-      "Rejestracja pomyślna! Możesz się teraz zalogować."
+      "Kod weryfikacyjny został wysłany na Twój e-mail."
     );
-    res.redirect("/");
+    res.redirect("/reset-password");
+  } catch (err) {
+    console.error("Błąd resetu hasła:", err);
+    req.flash("error_msg", "Wystąpił błąd serwera.");
+    res.redirect("/forgot-password");
   }
-);
+});
+
+// 3. Formularz wpisania kodu i nowego hasła
+app.get("/reset-password", (req, res) => {
+  res.render("reset-password.ejs");
+});
+
+// 4. Zatwierdzenie zmiany hasła
+app.post("/reset-password", async (req, res) => {
+  const { email, token, newPassword } = req.body;
+
+  try {
+    // Sprawdź czy kod jest poprawny i czy nie wygasł
+    const resetRecord = await db.query(
+      "SELECT * FROM password_resets WHERE email = $1 AND token = $2",
+      [email, token]
+    );
+
+    if (resetRecord.rows.length === 0) {
+      req.flash("error_msg", "Nieprawidłowy kod lub email.");
+      return res.redirect("/reset-password");
+    }
+
+    const record = resetRecord.rows[0];
+    if (new Date() > new Date(record.expires_at)) {
+      req.flash("error_msg", "Kod wygasł. Wygeneruj nowy.");
+      return res.redirect("/forgot-password");
+    }
+
+    // Hashuj nowe hasło i zaktualizuj usera
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await db.query("UPDATE users SET password = $1 WHERE email = $2", [
+      hashedNewPassword,
+      email,
+    ]);
+
+    // Usuń wykorzystany kod
+    await db.query("DELETE FROM password_resets WHERE email = $1", [email]);
+
+    req.flash("success_msg", "Hasło zostało zmienione! Możesz się zalogować.");
+    res.redirect("/");
+  } catch (err) {
+    console.error("Błąd zmiany hasła:", err);
+    req.flash("error_msg", "Wystąpił błąd serwera.");
+    res.redirect("/reset-password");
+  }
+});
+
+// ===== KONIEC SEKCJI RESETU HASŁA =====
 
 app.get("/logout", (req, res) => {
   req.session.destroy((err) => {
@@ -404,7 +555,6 @@ app.get("/api/comments/:postId", async (req, res) => {
 
   const postId = req.params.postId;
   try {
-    // NAPRAWIONE: Pobieramy c.user_id, aby frontend wiedział, czy to Twój komentarz
     const query = `
       SELECT c.id, c.user_id, c.content, TO_CHAR(c.created_at, 'DD.MM.YYYY HH24:MI') as created_at,
       u.name || ' ' || u.surname as author_name
@@ -439,7 +589,6 @@ app.post("/api/comments", async (req, res) => {
       RETURNING id, user_id, content, TO_CHAR(created_at, 'DD.MM.YYYY HH24:MI') as created_at
     `;
 
-    // NAPRAWIONE: Poprawne przekazanie parametrów do SQL
     const result = await db.query(query, [postId, req.session.userId, content]);
     const newComment = result.rows[0];
 

@@ -15,25 +15,37 @@
     </div>
     <div class="form-panel">
         <% if (locals.success_msg && success_msg.length > 0) { %>
-            <p class="success-message"><%= success_msg %></p>
+           <p class="success-message"><%= success_msg %></p>
         <% } %>
         <% if (locals.error_msg && error_msg.length > 0) { %>
             <p class="error-message"><%= error_msg %></p>
         <% } %>
+        
         <div id="login-form" <%- showRegister ? 'class="hidden"' : '' %>>
             <h2>Logowanie</h2>
             <form action="/login" method="POST">
                 <input type="text" name="login" placeholder="Login" required minlength="3" />
                 <input type="password" name="password" placeholder="Hasło" required minlength="6" />
-                <button type="submit">Zaloguj się</button>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <button type="submit" style="flex: 1;">Zaloguj się</button>
+                </div>
             </form>
+            
+            <p style="margin-top: 10px; font-size: 0.9rem;">
+                <a href="/forgot-password" style="color: #666; text-decoration: none;">Zapomniałeś hasła?</a>
+            </p>
+
             <p class="toggle-link">Nie masz konta? <a href="#" id="show-register">Zarejestruj się</a></p>
         </div>
+
         <div id="register-form" <%- !showRegister ? 'class="hidden"' : '' %>>
             <h2>Rejestracja</h2>
             <form action="/register" method="POST">
                 <input type="text" name="name" placeholder="Imię" required />
                 <input type="text" name="surname" placeholder="Nazwisko" required />
+                <input type="email" name="email" placeholder="Adres E-mail" required />
+                
                 <input type="text" name="login" placeholder="Login" required minlength="3" />
                 <input type="password" name="password" placeholder="Hasło" required minlength="6" />
                 <button type="submit">Zarejestruj się</button>
