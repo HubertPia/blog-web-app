@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,96 +11,170 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
     />
+    <link
+      href="https://cdn.quilljs.com/1.3.6/quill.snow.css"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="styles/main.css" />
-    <title>Mój Blog</title>
+    <title>Mój Blog - Strona Główna</title>
   </head>
   <body data-user-id="<%= userId %>">
-    <header>
-      <h1>Witaj, <%= name %>!</h1>
-      <p>Podziel się swoimi przemyśleniami i historiami</p>
-    </header>
-
-    <main>
-      <div id="flash-message-container"></div>
-
-      <div class="user-menu-container">
-        <button id="userMenuBtn" class="user-menu-btn">
-          <i class="fas fa-bars"></i>
-        </button>
-        <div id="userMenu" class="user-menu">
-          <a href="/profile">Mój profil</a>
-          <a href="/change-password">Zmień hasło</a>
-          <a href="/logout">Wyloguj się</a>
-        </div>
+    <div class="user-menu-container">
+      <button id="userMenuBtn" class="user-menu-btn">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div id="userMenu" class="user-menu">
+        <a href="/profile"><i class="fas fa-user"></i> Profil</a>
+        <a href="/change-password"><i class="fas fa-key"></i> Hasło</a>
+        <a href="/logout"><i class="fas fa-sign-out-alt"></i> Wyloguj</a>
       </div>
+    </div>
 
-      <button id="openCreateModal">+</button>
-
-      <div id="postsContainer"></div>
-
-      <div
-        id="loadingSpinner"
-        style="text-align: center; padding: 20px; color: white; display: none"
-      >
-        <i class="fas fa-spinner fa-spin fa-2x"></i>
-        <p>Ładowanie postów...</p>
-      </div>
-
-      <div id="modalOverlayCreate" class="modal-overlay"></div>
-      <div id="createPostModal" class="modal">
-        <div class="modal-content">
-          <span class="close" id="closeCreateModal">&times;</span>
-          <h2>Dodaj nowy post</h2>
-          <form class="modal-form">
-            <input type="text" id="createPostTitle" placeholder="Tytuł" />
-            <textarea id="createPostContent" placeholder="Treść..."></textarea>
-            <div class="file-upload-wrapper">
-              <span id="fileName"></span>
-              <label for="createPostImage" class="file-btn"
-                >Wybierz zdjęcie</label
-              >
-              <input type="file" id="createPostImage" accept="image/*" />
-            </div>
-            <button type="button" id="saveCreatePost">Zapisz</button>
-          </form>
-        </div>
-      </div>
-
-      <div id="modalOverlayEdit" class="modal-overlay"></div>
-      <div id="editPostModal" class="modal">
-        <div class="modal-content">
-          <span class="close" id="closeEditModal">&times;</span>
-          <h2>Edytuj post</h2>
-          <form class="modal-form">
-            <input type="hidden" id="editPostId" />
-            <input type="text" id="editPostTitle" placeholder="Tytuł" />
-            <textarea id="editPostContent" placeholder="Treść..."></textarea>
-            <button type="button" id="saveEditPost">Zapisz zmiany</button>
-          </form>
-        </div>
-      </div>
-
-      <div id="imageModal" class="modal-overlay">
-        <span class="close" id="closeImageModal">&times;</span>
-        <img class="modal-image-content" id="enlargedImage" />
-      </div>
-
-      <div id="modalOverlayConfirm" class="modal-overlay"></div>
-      <div id="confirmDeleteModal" class="modal">
-        <div class="modal-content">
-          <h2>Potwierdź usunięcie</h2>
-          <p>
-            Czy na pewno chcesz trwale usunąć ten post? Tej operacji nie można
-            cofnąć.
+    <div class="layout-container">
+      <aside class="sidebar left-sidebar">
+        <div class="sidebar-card user-mini-profile">
+          <div class="avatar-placeholder">
+            <%= name.charAt(0).toUpperCase() %>
+          </div>
+          <h3>Witaj, <%= name %>!</h3>
+          <p style="color: #666; font-size: 0.9rem">
+            Miło Cię widzieć z powrotem.
           </p>
-          <div class="modal-buttons">
-            <button id="cancelDeleteBtn" class="btn-secondary">Anuluj</button>
-            <button id="confirmDeleteBtn" class="btn-danger">Tak, usuń</button>
+        </div>
+
+        <div class="sidebar-card">
+          <nav class="sidebar-nav">
+            <a href="/index" style="color: #3b82f6; background-color: #f0f2f5">
+              <i class="fas fa-home"></i> Strona Główna
+            </a>
+            <a href="/profile">
+              <i class="fas fa-user-circle"></i> Mój Profil
+            </a>
+            <a href="/change-password">
+              <i class="fas fa-cog"></i> Zmień Hasło
+            </a>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0" />
+            <a href="/logout" style="color: #e74c3c">
+              <i class="fas fa-sign-out-alt"></i> Wyloguj się
+            </a>
+          </nav>
+        </div>
+      </aside>
+
+      <main class="feed-content">
+        <div id="flash-message-container"></div>
+
+        <header class="feed-header">
+          <h1>Witaj, <%= name %>!</h1>
+          <p>Sprawdź co słychać u innych.</p>
+        </header>
+
+        <div id="postsContainer"></div>
+
+        <div
+          id="loadingSpinner"
+          style="text-align: center; padding: 20px; color: #666; display: none"
+        >
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <p>Ładowanie postów...</p>
+        </div>
+      </main>
+
+      <aside class="sidebar right-sidebar">
+        <div class="sidebar-card">
+          <h3>Aktualności</h3>
+          <div class="news-item">
+            <strong>Nowy edytor tekstu!</strong>
+            <span
+              >Teraz możesz pogrubiać tekst i używać kursywy w swoich
+              wpisach.</span
+            >
+          </div>
+          <div class="news-item">
+            <strong>Bezpieczeństwo</strong>
+            <span>Pamiętaj o regularnej zmianie hasła.</span>
+          </div>
+          <div class="news-item">
+            <strong>Społeczność</strong>
+            <span
+              >Mamy już coraz więcej użytkowników. Dziękujemy, że jesteś z
+              nami!</span
+            >
           </div>
         </div>
-      </div>
-    </main>
 
+        <div class="footer-links">
+          <p>&copy; 2026 Mój Blog Portal.</p>
+          <p>Wszystkie prawa zastrzeżone.</p>
+        </div>
+      </aside>
+    </div>
+
+    <button id="openCreateModal">+</button>
+
+    <div id="modalOverlayCreate" class="modal-overlay"></div>
+    <div id="createPostModal" class="modal">
+      <div class="modal-content">
+        <span class="close" id="closeCreateModal">&times;</span>
+        <h2>Dodaj nowy post</h2>
+        <form class="modal-form">
+          <input type="text" id="createPostTitle" placeholder="Tytuł posta" />
+
+          <div class="editor-wrapper">
+            <div id="createPostEditor"></div>
+          </div>
+
+          <div class="file-upload-wrapper">
+            <span id="fileName"></span>
+            <label for="createPostImage" class="file-btn">
+              <i class="fas fa-camera"></i> Dodaj zdjęcie
+            </label>
+            <input type="file" id="createPostImage" accept="image/*" />
+          </div>
+          <button type="button" id="saveCreatePost">Opublikuj</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="modalOverlayEdit" class="modal-overlay"></div>
+    <div id="editPostModal" class="modal">
+      <div class="modal-content">
+        <span class="close" id="closeEditModal">&times;</span>
+        <h2>Edytuj post</h2>
+        <form class="modal-form">
+          <input type="hidden" id="editPostId" />
+          <input type="text" id="editPostTitle" placeholder="Tytuł" />
+
+          <div class="editor-wrapper">
+            <div id="editPostEditor"></div>
+          </div>
+
+          <button type="button" id="saveEditPost">Zapisz zmiany</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="imageModal" class="modal-overlay">
+      <span class="close" id="closeImageModal">&times;</span>
+      <img class="modal-image-content" id="enlargedImage" />
+    </div>
+
+    <div id="modalOverlayConfirm" class="modal-overlay"></div>
+    <div id="confirmDeleteModal" class="modal">
+      <div class="modal-content">
+        <h2>Potwierdź usunięcie</h2>
+        <p>
+          Czy na pewno chcesz trwale usunąć ten post? Tej operacji nie można
+          cofnąć.
+        </p>
+        <div class="modal-buttons">
+          <button id="cancelDeleteBtn" class="btn-secondary">Anuluj</button>
+          <button id="confirmDeleteBtn" class="btn-danger">Tak, usuń</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script src="/scripts/script.js"></script>
   </body>
 </html>

@@ -1,6 +1,34 @@
 document.addEventListener("DOMContentLoaded", () => {
   let postToDeleteId = null;
 
+  // --- KONFIGURACJA QUILL (Edytor tekstu) ---
+  // Pasek narzędzi: pogrubienie, kursywa, podkreślenie, listy
+  const toolbarOptions = [
+    ["bold", "italic", "underline"],
+    [{ list: "ordered" }, { list: "bullet" }],
+    ["clean"], // przycisk do czyszczenia formatowania
+  ];
+
+  let quillCreate = null;
+  let quillEdit = null;
+
+  // Sprawdzamy czy kontenery istnieją (żeby nie wywalało błędu na stronie logowania)
+  if (document.getElementById("createPostEditor")) {
+    quillCreate = new Quill("#createPostEditor", {
+      theme: "snow",
+      placeholder: "Napisz coś ciekawego...",
+      modules: { toolbar: toolbarOptions },
+    });
+  }
+
+  if (document.getElementById("editPostEditor")) {
+    quillEdit = new Quill("#editPostEditor", {
+      theme: "snow",
+      placeholder: "Edytuj treść...",
+      modules: { toolbar: toolbarOptions },
+    });
+  }
+
   /*******************************************************************
    * SEKCJA 1: OBSŁUGA STRONY LOGOWANIA I REJESTRACJI
    *******************************************************************/
@@ -68,8 +96,6 @@ document.addEventListener("DOMContentLoaded", () => {
     cDiv.dataset.id = comment.id;
 
     let actions = "";
-    // Sprawdź czy to komentarz zalogowanego użytkownika
-    // Używamy String(), aby uniknąć problemów z typami (np. liczba vs tekst)
     if (String(comment.user_id) === String(currentUserId)) {
       actions = `
             <div class="comment-actions">
@@ -109,7 +135,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let buttons = "";
     if (String(post.user_id) === String(currentUserId)) {
       buttons = `
-            <button class="editPost" data-id="${post.id}" data-title="${post.title}" data-content="${post.content}">Edytuj</button>
+            <button class="editPost" data-id="${post.id}" data-title="${
+        post.title
+      }" data-content="${post.content.replace(/"/g, "&quot;")}">Edytuj</button>
             <button class="deletePost" data-id="${post.id}">Usuń</button>
         `;
     }
@@ -120,13 +148,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const commentsCount = post.comments_count || 0;
 
+    // UWAGA: Zmieniamy <p> na <div> i wrzucamy innerHTML (post.content to HTML z edytora)
     postDiv.innerHTML = `
         <div class="post-meta">
             ${authorLine}
             <span>${post.creation_date}</span>
         </div>
         <h3>${post.title}</h3>
-        <p>${post.content}</p>
+        <div class="post-content-html">${post.content}</div>
         ${imageTag}
         <div class="post-actions">
             <div>${buttons}</div>
@@ -199,13 +228,21 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // 3. Edycja posta
+    // 3. Edycja posta - Ładowanie danych do edytora
     const editButton = e.target.closest(".editPost");
     if (editButton) {
       document.getElementById("editPostId").value = editButton.dataset.id;
       document.getElementById("editPostTitle").value = editButton.dataset.title;
-      document.getElementById("editPostContent").value =
-        editButton.dataset.content;
+
+      // Ładujemy HTML do edytora Quill
+      if (quillEdit) {
+        quillEdit.clipboard.dangerouslyPasteHTML(editButton.dataset.content);
+      } else {
+        // Fallback jeśli coś nie zadziała
+        document.getElementById("editPostContent").value =
+          editButton.dataset.content;
+      }
+
       document.getElementById("modalOverlayEdit").classList.add("active");
       document.getElementById("editPostModal").classList.add("active");
       return;
@@ -262,17 +299,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const deleteCommentBtn = e.target.closest(".delete-comment-btn");
     if (deleteCommentBtn) {
       if (!confirm("Czy na pewno chcesz usunąć komentarz?")) return;
-
       const commentId = deleteCommentBtn.dataset.id;
       const commentItem = deleteCommentBtn.closest(".comment-item");
-
       try {
         const res = await fetch(`/api/comments/${commentId}`, {
           method: "DELETE",
         });
         const data = await res.json();
         if (data.success) {
-          // Zaktualizuj licznik
           const postDiv = commentItem.closest(".post");
           if (postDiv) {
             const countSpan = postDiv.querySelector(".comments-count-label");
@@ -283,16 +317,14 @@ document.addEventListener("DOMContentLoaded", () => {
               );
           }
           commentItem.remove();
-        } else {
-          alert("Błąd: " + (data.error || "Nie można usunąć"));
-        }
+        } else alert("Błąd: " + (data.error || "Nie można usunąć"));
       } catch (e) {
         console.error(e);
       }
       return;
     }
 
-    // 7. Edycja komentarza - włączenie trybu edycji
+    // 7. Edycja komentarza
     const editCommentBtn = e.target.closest(".edit-comment-btn");
     if (editCommentBtn) {
       const commentItem = editCommentBtn.closest(".comment-item");
@@ -300,7 +332,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const currentContent = contentDiv.textContent;
       const commentId = editCommentBtn.dataset.id;
 
-      // Zamień treść na formularz edycji
       contentDiv.innerHTML = `
             <div class="edit-comment-wrapper">
                 <input type="text" class="edit-comment-input" value="${currentContent.replace(
@@ -316,7 +347,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             </div>
         `;
-      // Ukryj przyciski akcji na górze podczas edycji
       commentItem.querySelector(".comment-actions").style.display = "none";
       return;
     }
@@ -340,13 +370,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         const data = await res.json();
         if (data.success) {
-          // Przywróć widok tekstu
           const contentDiv = commentItem.querySelector(".comment-content");
           contentDiv.textContent = newContent;
           commentItem.querySelector(".comment-actions").style.display = "flex";
-        } else {
-          alert("Błąd: " + data.error);
-        }
+        } else alert("Błąd: " + data.error);
       } catch (e) {
         console.error(e);
       }
@@ -360,14 +387,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const wrapper = cancelCommentBtn.closest(".edit-comment-wrapper");
       const commentItem = wrapper.closest(".comment-item");
       const contentDiv = commentItem.querySelector(".comment-content");
-
       contentDiv.textContent = originalContent;
       commentItem.querySelector(".comment-actions").style.display = "flex";
       return;
     }
   });
 
-  // --- SUBMIT FORMULARZA KOMENTARZA (DODAWANIE) ---
+  // --- SUBMIT KOMENTARZA ---
   document.body.addEventListener("submit", async (e) => {
     if (e.target.classList.contains("add-comment-form")) {
       e.preventDefault();
@@ -397,12 +423,9 @@ document.addEventListener("DOMContentLoaded", () => {
           );
           if (listContainer.innerHTML.includes("Brak komentarzy"))
             listContainer.innerHTML = "";
-
-          // Używamy funkcji createCommentElement
           const cDiv = createCommentElement(data.comment, currentUserId);
           cDiv.style.animation = "fadeIn 0.5s ease";
           listContainer.prepend(cDiv);
-
           const postDiv = document.querySelector(
             `.post[data-post-id='${postId}']`
           );
@@ -411,9 +434,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (countSpan)
               countSpan.textContent = parseInt(countSpan.textContent) + 1;
           }
-        } else {
-          alert("Błąd dodawania komentarza.");
-        }
+        } else alert("Błąd dodawania komentarza.");
       } catch (err) {
         console.error(err);
         button.disabled = false;
@@ -422,7 +443,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /*******************************************************************
-   * SEKCJA 5: OBSŁUGA MODALI (TWORZENIE, EDYCJA POSTA)
+   * SEKCJA 5: OBSŁUGA MODALI (TWORZENIE, EDYCJA) Z QUILLEM
    *******************************************************************/
 
   const openCreateModalButton = document.getElementById("openCreateModal");
@@ -464,17 +485,27 @@ document.addEventListener("DOMContentLoaded", () => {
   if (confirmModalOverlay)
     confirmModalOverlay.addEventListener("click", closeConfirmModal);
 
+  // --- ZAPISYWANIE NOWEGO POSTA (QUILL) ---
   const saveCreatePostButton = document.getElementById("saveCreatePost");
   if (saveCreatePostButton) {
     saveCreatePostButton.addEventListener("click", async () => {
       const title = document.getElementById("createPostTitle").value.trim();
-      const content = document.getElementById("createPostContent").value.trim();
+
+      // POBIERAMY TREŚĆ Z QUILL
+      const content = quillCreate ? quillCreate.root.innerHTML : "";
+      // Sprawdzenie czy edytor nie jest pusty (Quill zostawia <p><br></p> w pustym edytorze)
+      const isContentEmpty = quillCreate.getText().trim().length === 0;
+
       const image = document.getElementById("createPostImage").files[0];
-      if (!title || !content) return alert("Uzupełnij pola tytułu i treści!");
+
+      if (!title || isContentEmpty)
+        return alert("Uzupełnij pola tytułu i treści!");
+
       const formData = new FormData();
       formData.append("title", title);
-      formData.append("content", content);
+      formData.append("content", content); // Wysyłamy HTML
       if (image) formData.append("image", image);
+
       const response = await fetch("/add-post", {
         method: "POST",
         body: formData,
@@ -484,24 +515,31 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // --- ZAPISYWANIE EDYCJI POSTA (QUILL) ---
   const saveEditPostButton = document.getElementById("saveEditPost");
   if (saveEditPostButton) {
     saveEditPostButton.addEventListener("click", async () => {
       const id = document.getElementById("editPostId").value;
       const title = document.getElementById("editPostTitle").value.trim();
-      const content = document.getElementById("editPostContent").value.trim();
+
+      // POBIERAMY TREŚĆ Z QUILL
+      const content = quillEdit ? quillEdit.root.innerHTML : "";
+
       const response = await fetch(`/edit-post/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, content }),
       });
+
       if (response.ok) {
         const postElement = document.querySelector(
           `.post[data-post-id='${id}']`
         );
         if (postElement) {
           postElement.querySelector("h3").textContent = title;
-          postElement.querySelector("p").textContent = content;
+          // Aktualizujemy HTML w poście
+          postElement.querySelector(".post-content-html").innerHTML = content;
+
           const editBtn = postElement.querySelector(".editPost");
           editBtn.dataset.title = title;
           editBtn.dataset.content = content;
