@@ -1,32 +1,39 @@
 document.addEventListener("DOMContentLoaded", () => {
   let postToDeleteId = null;
 
-  // --- KONFIGURACJA QUILL (Edytor tekstu) ---
-  // Pasek narzędzi: pogrubienie, kursywa, podkreślenie, listy
-  const toolbarOptions = [
-    ["bold", "italic", "underline"],
-    [{ list: "ordered" }, { list: "bullet" }],
-    ["clean"], // przycisk do czyszczenia formatowania
-  ];
-
+  // --- SEKCJA 0: BEZPIECZNA INICJALIZACJA QUILL (Edytor tekstu) ---
+  // Używamy try-catch, żeby błąd edytora nie zabił reszty skryptu (np. komentarzy)
   let quillCreate = null;
   let quillEdit = null;
 
-  // Sprawdzamy czy kontenery istnieją (żeby nie wywalało błędu na stronie logowania)
-  if (document.getElementById("createPostEditor")) {
-    quillCreate = new Quill("#createPostEditor", {
-      theme: "snow",
-      placeholder: "Napisz coś ciekawego...",
-      modules: { toolbar: toolbarOptions },
-    });
-  }
+  try {
+    if (typeof Quill !== "undefined") {
+      const toolbarOptions = [
+        ["bold", "italic", "underline"],
+        [{ list: "ordered" }, { list: "bullet" }],
+        ["clean"],
+      ];
 
-  if (document.getElementById("editPostEditor")) {
-    quillEdit = new Quill("#editPostEditor", {
-      theme: "snow",
-      placeholder: "Edytuj treść...",
-      modules: { toolbar: toolbarOptions },
-    });
+      if (document.getElementById("createPostEditor")) {
+        quillCreate = new Quill("#createPostEditor", {
+          theme: "snow",
+          placeholder: "Napisz coś ciekawego...",
+          modules: { toolbar: toolbarOptions },
+        });
+      }
+
+      if (document.getElementById("editPostEditor")) {
+        quillEdit = new Quill("#editPostEditor", {
+          theme: "snow",
+          placeholder: "Edytuj treść...",
+          modules: { toolbar: toolbarOptions },
+        });
+      }
+    } else {
+      console.warn("Biblioteka Quill nie została załadowana.");
+    }
+  } catch (err) {
+    console.error("Błąd inicjalizacji edytora tekstu:", err);
   }
 
   /*******************************************************************
@@ -119,7 +126,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   /*******************************************************************
-   * SEKCJA 3: GENEROWANIE POSTA
+   * SEKCJA 3: GENEROWANIE POSTA (FEED)
    *******************************************************************/
 
   const createPostElement = (post, currentUserId) => {
@@ -133,11 +140,14 @@ document.addEventListener("DOMContentLoaded", () => {
       : "";
 
     let buttons = "";
+    // Escapujemy cudzysłowy w treści HTML, żeby nie zepsuć atrybutu data-content
+    const safeContent = post.content
+      ? post.content.replace(/"/g, "&quot;")
+      : "";
+
     if (String(post.user_id) === String(currentUserId)) {
       buttons = `
-            <button class="editPost" data-id="${post.id}" data-title="${
-        post.title
-      }" data-content="${post.content.replace(/"/g, "&quot;")}">Edytuj</button>
+            <button class="editPost" data-id="${post.id}" data-title="${post.title}" data-content="${safeContent}">Edytuj</button>
             <button class="deletePost" data-id="${post.id}">Usuń</button>
         `;
     }
@@ -148,7 +158,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const commentsCount = post.comments_count || 0;
 
-    // UWAGA: Zmieniamy <p> na <div> i wrzucamy innerHTML (post.content to HTML z edytora)
     postDiv.innerHTML = `
         <div class="post-meta">
             ${authorLine}
@@ -187,7 +196,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   /*******************************************************************
-   * SEKCJA 4: OBSŁUGA ZDARZEŃ (KLIKNIĘCIA)
+   * SEKCJA 4: OBSŁUGA ZDARZEŃ (KLIKNIĘCIA - DELEGACJA)
    *******************************************************************/
 
   document.body.addEventListener("click", async (e) => {
@@ -231,16 +240,21 @@ document.addEventListener("DOMContentLoaded", () => {
     // 3. Edycja posta - Ładowanie danych do edytora
     const editButton = e.target.closest(".editPost");
     if (editButton) {
-      document.getElementById("editPostId").value = editButton.dataset.id;
-      document.getElementById("editPostTitle").value = editButton.dataset.title;
+      const pId = editButton.dataset.id;
+      const pTitle = editButton.dataset.title;
+      const pContent = editButton.dataset.content; // HTML content
 
-      // Ładujemy HTML do edytora Quill
+      document.getElementById("editPostId").value = pId;
+      document.getElementById("editPostTitle").value = pTitle;
+
+      // Ładujemy HTML do edytora Quill (jeśli istnieje) lub do zwykłego inputa
       if (quillEdit) {
-        quillEdit.clipboard.dangerouslyPasteHTML(editButton.dataset.content);
+        // Czyścimy i wklejamy HTML bezpiecznie
+        quillEdit.root.innerHTML = pContent;
       } else {
-        // Fallback jeśli coś nie zadziała
-        document.getElementById("editPostContent").value =
-          editButton.dataset.content;
+        // Fallback
+        const textArea = document.getElementById("editPostContent");
+        if (textArea) textArea.value = pContent;
       }
 
       document.getElementById("modalOverlayEdit").classList.add("active");
@@ -260,7 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // 5. Otwieranie komentarzy
+    // 5. Otwieranie/Zamykanie komentarzy
     const toggleCommentsBtn = e.target.closest(".toggle-comments");
     if (toggleCommentsBtn) {
       const postId = toggleCommentsBtn.dataset.id;
@@ -268,10 +282,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const listContainer = document.getElementById(`comments-list-${postId}`);
       const currentUserId = document.body.dataset.userId;
 
+      if (!section) return;
+
       if (section.classList.contains("show")) {
         section.classList.remove("show");
       } else {
         section.classList.add("show");
+
+        // Pobieramy komentarze z serwera
         try {
           const response = await fetch(`/api/comments/${postId}`);
           const data = await response.json();
@@ -286,8 +304,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 listContainer.appendChild(el);
               });
             }
+          } else {
+            listContainer.innerHTML =
+              '<div style="color:red; text-align:center;">Błąd serwera.</div>';
           }
         } catch (err) {
+          console.error(err);
           listContainer.innerHTML =
             '<div style="color:red; text-align:center;">Błąd ładowania komentarzy.</div>';
         }
@@ -301,12 +323,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!confirm("Czy na pewno chcesz usunąć komentarz?")) return;
       const commentId = deleteCommentBtn.dataset.id;
       const commentItem = deleteCommentBtn.closest(".comment-item");
+
       try {
         const res = await fetch(`/api/comments/${commentId}`, {
           method: "DELETE",
         });
         const data = await res.json();
         if (data.success) {
+          // Aktualizacja licznika
           const postDiv = commentItem.closest(".post");
           if (postDiv) {
             const countSpan = postDiv.querySelector(".comments-count-label");
@@ -317,19 +341,21 @@ document.addEventListener("DOMContentLoaded", () => {
               );
           }
           commentItem.remove();
-        } else alert("Błąd: " + (data.error || "Nie można usunąć"));
+        } else {
+          alert("Błąd: " + (data.error || "Nie można usunąć"));
+        }
       } catch (e) {
         console.error(e);
       }
       return;
     }
 
-    // 7. Edycja komentarza
+    // 7. Edycja komentarza (włączenie trybu edycji)
     const editCommentBtn = e.target.closest(".edit-comment-btn");
     if (editCommentBtn) {
       const commentItem = editCommentBtn.closest(".comment-item");
       const contentDiv = commentItem.querySelector(".comment-content");
-      const currentContent = contentDiv.textContent;
+      const currentContent = contentDiv.textContent; // Pobieramy czysty tekst
       const commentId = editCommentBtn.dataset.id;
 
       contentDiv.innerHTML = `
@@ -347,7 +373,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             </div>
         `;
-      commentItem.querySelector(".comment-actions").style.display = "none";
+      const actionsDiv = commentItem.querySelector(".comment-actions");
+      if (actionsDiv) actionsDiv.style.display = "none";
       return;
     }
 
@@ -372,8 +399,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (data.success) {
           const contentDiv = commentItem.querySelector(".comment-content");
           contentDiv.textContent = newContent;
-          commentItem.querySelector(".comment-actions").style.display = "flex";
-        } else alert("Błąd: " + data.error);
+          const actionsDiv = commentItem.querySelector(".comment-actions");
+          if (actionsDiv) actionsDiv.style.display = "flex";
+        } else {
+          alert("Błąd: " + data.error);
+        }
       } catch (e) {
         console.error(e);
       }
@@ -387,13 +417,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const wrapper = cancelCommentBtn.closest(".edit-comment-wrapper");
       const commentItem = wrapper.closest(".comment-item");
       const contentDiv = commentItem.querySelector(".comment-content");
+
       contentDiv.textContent = originalContent;
-      commentItem.querySelector(".comment-actions").style.display = "flex";
+      const actionsDiv = commentItem.querySelector(".comment-actions");
+      if (actionsDiv) actionsDiv.style.display = "flex";
       return;
     }
   });
 
-  // --- SUBMIT KOMENTARZA ---
+  // --- SUBMIT NOWEGO KOMENTARZA ---
   document.body.addEventListener("submit", async (e) => {
     if (e.target.classList.contains("add-comment-form")) {
       e.preventDefault();
@@ -421,11 +453,16 @@ document.addEventListener("DOMContentLoaded", () => {
           const listContainer = document.getElementById(
             `comments-list-${postId}`
           );
+          // Usuń komunikat "brak komentarzy" jeśli jest
           if (listContainer.innerHTML.includes("Brak komentarzy"))
             listContainer.innerHTML = "";
+
           const cDiv = createCommentElement(data.comment, currentUserId);
           cDiv.style.animation = "fadeIn 0.5s ease";
+          // Dodajemy na początek listy
           listContainer.prepend(cDiv);
+
+          // Zwiększamy licznik
           const postDiv = document.querySelector(
             `.post[data-post-id='${postId}']`
           );
@@ -434,7 +471,9 @@ document.addEventListener("DOMContentLoaded", () => {
             if (countSpan)
               countSpan.textContent = parseInt(countSpan.textContent) + 1;
           }
-        } else alert("Błąd dodawania komentarza.");
+        } else {
+          alert("Błąd dodawania komentarza.");
+        }
       } catch (err) {
         console.error(err);
         button.disabled = false;
@@ -443,7 +482,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /*******************************************************************
-   * SEKCJA 5: OBSŁUGA MODALI (TWORZENIE, EDYCJA) Z QUILLEM
+   * SEKCJA 5: OBSŁUGA MODALI
    *******************************************************************/
 
   const openCreateModalButton = document.getElementById("openCreateModal");
@@ -485,25 +524,30 @@ document.addEventListener("DOMContentLoaded", () => {
   if (confirmModalOverlay)
     confirmModalOverlay.addEventListener("click", closeConfirmModal);
 
-  // --- ZAPISYWANIE NOWEGO POSTA (QUILL) ---
+  // --- ZAPISYWANIE NOWEGO POSTA ---
   const saveCreatePostButton = document.getElementById("saveCreatePost");
   if (saveCreatePostButton) {
     saveCreatePostButton.addEventListener("click", async () => {
       const title = document.getElementById("createPostTitle").value.trim();
 
-      // POBIERAMY TREŚĆ Z QUILL
-      const content = quillCreate ? quillCreate.root.innerHTML : "";
-      // Sprawdzenie czy edytor nie jest pusty (Quill zostawia <p><br></p> w pustym edytorze)
-      const isContentEmpty = quillCreate.getText().trim().length === 0;
+      // Pobieramy treść z Quill jeśli istnieje, w przeciwnym razie z text area (fallback)
+      let content = "";
+      if (quillCreate) {
+        content = quillCreate.root.innerHTML;
+        // Quill wstawia pusty <p><br></p>, traktujemy to jako pusty string
+        if (quillCreate.getText().trim().length === 0) content = "";
+      } else {
+        const ta = document.getElementById("createPostContent");
+        if (ta) content = ta.value.trim();
+      }
 
       const image = document.getElementById("createPostImage").files[0];
 
-      if (!title || isContentEmpty)
-        return alert("Uzupełnij pola tytułu i treści!");
+      if (!title || !content) return alert("Uzupełnij pola tytułu i treści!");
 
       const formData = new FormData();
       formData.append("title", title);
-      formData.append("content", content); // Wysyłamy HTML
+      formData.append("content", content);
       if (image) formData.append("image", image);
 
       const response = await fetch("/add-post", {
@@ -515,15 +559,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- ZAPISYWANIE EDYCJI POSTA (QUILL) ---
+  // --- ZAPISYWANIE EDYCJI POSTA ---
   const saveEditPostButton = document.getElementById("saveEditPost");
   if (saveEditPostButton) {
     saveEditPostButton.addEventListener("click", async () => {
       const id = document.getElementById("editPostId").value;
       const title = document.getElementById("editPostTitle").value.trim();
 
-      // POBIERAMY TREŚĆ Z QUILL
-      const content = quillEdit ? quillEdit.root.innerHTML : "";
+      let content = "";
+      if (quillEdit) {
+        content = quillEdit.root.innerHTML;
+        if (quillEdit.getText().trim().length === 0) content = "";
+      } else {
+        const ta = document.getElementById("editPostContent");
+        if (ta) content = ta.value.trim();
+      }
+
+      if (!title || !content) return alert("Uzupełnij pola!");
 
       const response = await fetch(`/edit-post/${id}`, {
         method: "PUT",
@@ -537,12 +589,17 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         if (postElement) {
           postElement.querySelector("h3").textContent = title;
-          // Aktualizujemy HTML w poście
-          postElement.querySelector(".post-content-html").innerHTML = content;
+          // Aktualizujemy HTML
+          const contentContainer =
+            postElement.querySelector(".post-content-html");
+          if (contentContainer) contentContainer.innerHTML = content;
 
+          // Aktualizujemy atrybuty przycisku edycji
           const editBtn = postElement.querySelector(".editPost");
-          editBtn.dataset.title = title;
-          editBtn.dataset.content = content;
+          if (editBtn) {
+            editBtn.dataset.title = title;
+            editBtn.dataset.content = content;
+          }
         }
         document.getElementById("modalOverlayEdit").classList.remove("active");
         document.getElementById("editPostModal").classList.remove("active");
@@ -550,6 +607,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Zamykanie modali na kliknięcie w tło lub X
   document
     .querySelectorAll(".close, .modal-overlay:not(#modalOverlayConfirm)")
     .forEach((element) => {
@@ -569,9 +627,13 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-  // INFINITE SCROLL
+  // INFINITE SCROLL (Tylko na stronie głównej)
   const postsContainer = document.getElementById("postsContainer");
-  if (postsContainer && !document.querySelector(".profile-section")) {
+  // Sprawdzamy czy nie jesteśmy na profilu (bo tam posty są statyczne)
+  // Możemy to sprawdzić po braku klasy .profile-stats w dokumencie lub innej cesze
+  const isProfilePage = document.querySelector(".profile-stats");
+
+  if (postsContainer && !isProfilePage) {
     let currentPage = 1;
     let isLoading = false;
     const loadingSpinner = document.getElementById("loadingSpinner");

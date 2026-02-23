@@ -8,7 +8,8 @@ import multer from "multer";
 import path from "path";
 import flash from "connect-flash";
 import { body, validationResult } from "express-validator";
-import nodemailer from "nodemailer"; // <--- NOWOŚĆ: Import nodemailera
+import nodemailer from "nodemailer";
+import sanitizeHtml from "sanitize-html";
 
 const app = express();
 const port = 3000;
@@ -33,7 +34,6 @@ const transporter = nodemailer.createTransport({
   tls: {
     rejectUnauthorized: false,
   },
-  // -----------------------------------------------
 });
 
 const storage = multer.diskStorage({
@@ -45,6 +45,27 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+const sanitizeConfig = {
+  allowedTags: [
+    "b",
+    "i",
+    "em",
+    "strong",
+    "u",
+    "p",
+    "br",
+    "ul",
+    "ol",
+    "li",
+    "span",
+    "a",
+  ],
+  allowedAttributes: {
+    a: ["href"],
+  },
+  allowedSchemes: ["http", "https", "mailto"],
+};
+
 app.use(express.static("public"));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -54,7 +75,7 @@ app.use(
     resave: false,
     saveUninitialized: true,
     cookie: { maxAge: 60 * 60 * 1000 }, // 1 godzina
-  })
+  }),
 );
 app.use(flash());
 
@@ -90,12 +111,12 @@ app.post(
     try {
       const result = await db.query(
         "SELECT * FROM users WHERE LOWER(login) = LOWER($1)",
-        [login]
+        [login],
       );
       if (result.rows.length === 0) {
         req.flash(
           "error_msg",
-          "Nie znaleziono użytkownika lub hasło jest błędne."
+          "Nie znaleziono użytkownika lub hasło jest błędne.",
         );
         return res.redirect("/");
       }
@@ -105,7 +126,7 @@ app.post(
       if (!match) {
         req.flash(
           "error_msg",
-          "Nie znaleziono użytkownika lub hasło jest błędne."
+          "Nie znaleziono użytkownika lub hasło jest błędne.",
         );
         return res.redirect("/");
       }
@@ -117,7 +138,7 @@ app.post(
       req.flash("error_msg", "Błąd serwera");
       res.redirect("/");
     }
-  }
+  },
 );
 
 app.post(
@@ -125,7 +146,7 @@ app.post(
   [
     body("name", "Imię jest wymagane.").trim().notEmpty(),
     body("surname", "Nazwisko jest wymagane.").trim().notEmpty(),
-    body("email", "Podaj poprawny adres e-mail").isEmail().normalizeEmail(), // <--- NOWOŚĆ walidacja maila
+    body("email", "Podaj poprawny adres e-mail").isEmail().normalizeEmail(),
     body("login", "Login jest wymagany i musi mieć min. 3 znaki.")
       .trim()
       .isLength({ min: 3 }),
@@ -141,20 +162,18 @@ app.post(
     const { name, surname, email, login, password } = req.body;
 
     try {
-      // Sprawdzamy czy login zajęty
       const existingLogin = await db.query(
         "SELECT * FROM users WHERE LOWER(login) = LOWER($1)",
-        [login]
+        [login],
       );
       if (existingLogin.rows.length > 0) {
         req.flash("error_msg", "Ten login jest już zajęty!");
         return res.redirect("/?showRegister=true");
       }
 
-      // Sprawdzamy czy email zajęty
       const existingEmail = await db.query(
         "SELECT * FROM users WHERE LOWER(email) = LOWER($1)",
-        [email]
+        [email],
       );
       if (existingEmail.rows.length > 0) {
         req.flash("error_msg", "Ten adres e-mail jest już zajęty!");
@@ -163,15 +182,14 @@ app.post(
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Dodajemy email do inserta
       await db.query(
         "INSERT INTO users (name, surname, email, login, password) VALUES ($1, $2, $3, $4, $5)",
-        [name, surname, email, login, hashedPassword]
+        [name, surname, email, login, hashedPassword],
       );
 
       req.flash(
         "success_msg",
-        "Rejestracja pomyślna! Możesz się teraz zalogować."
+        "Rejestracja pomyślna! Możesz się teraz zalogować.",
       );
       res.redirect("/");
     } catch (err) {
@@ -179,17 +197,15 @@ app.post(
       req.flash("error_msg", "Wystąpił błąd podczas rejestracji.");
       res.redirect("/?showRegister=true");
     }
-  }
+  },
 );
 
 // ===== NOWE ROUTY: RESET HASŁA =====
 
-// 1. Formularz wpisania maila
 app.get("/forgot-password", (req, res) => {
   res.render("forgot-password.ejs");
 });
 
-// 2. Obsługa wysłania kodu
 app.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
   if (!email) {
@@ -198,31 +214,23 @@ app.post("/forgot-password", async (req, res) => {
   }
 
   try {
-    // Sprawdź czy user istnieje
     const userRes = await db.query("SELECT * FROM users WHERE email = $1", [
       email,
     ]);
     if (userRes.rows.length === 0) {
-      // Ze względów bezpieczeństwa można napisać "Jeśli konto istnieje, wysłano kod",
-      // ale dla wygody napiszemy wprost:
       req.flash("error_msg", "Nie znaleziono konta z takim adresem e-mail.");
       return res.redirect("/forgot-password");
     }
 
-    // Generuj kod (np. 6 cyfr)
     const token = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Ustaw czas wygaśnięcia (np. 15 minut)
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    // Zapisz do bazy (najpierw usuń stare kody dla tego maila, żeby nie śmiecić)
     await db.query("DELETE FROM password_resets WHERE email = $1", [email]);
     await db.query(
       "INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)",
-      [email, token, expiresAt]
+      [email, token, expiresAt],
     );
 
-    // Wyślij maila
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
@@ -234,7 +242,7 @@ app.post("/forgot-password", async (req, res) => {
 
     req.flash(
       "success_msg",
-      "Kod weryfikacyjny został wysłany na Twój e-mail."
+      "Kod weryfikacyjny został wysłany na Twój e-mail.",
     );
     res.redirect("/reset-password");
   } catch (err) {
@@ -244,20 +252,17 @@ app.post("/forgot-password", async (req, res) => {
   }
 });
 
-// 3. Formularz wpisania kodu i nowego hasła
 app.get("/reset-password", (req, res) => {
   res.render("reset-password.ejs");
 });
 
-// 4. Zatwierdzenie zmiany hasła
 app.post("/reset-password", async (req, res) => {
   const { email, token, newPassword } = req.body;
 
   try {
-    // Sprawdź czy kod jest poprawny i czy nie wygasł
     const resetRecord = await db.query(
       "SELECT * FROM password_resets WHERE email = $1 AND token = $2",
-      [email, token]
+      [email, token],
     );
 
     if (resetRecord.rows.length === 0) {
@@ -271,14 +276,12 @@ app.post("/reset-password", async (req, res) => {
       return res.redirect("/forgot-password");
     }
 
-    // Hashuj nowe hasło i zaktualizuj usera
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await db.query("UPDATE users SET password = $1 WHERE email = $2", [
       hashedNewPassword,
       email,
     ]);
 
-    // Usuń wykorzystany kod
     await db.query("DELETE FROM password_resets WHERE email = $1", [email]);
 
     req.flash("success_msg", "Hasło zostało zmienione! Możesz się zalogować.");
@@ -289,8 +292,6 @@ app.post("/reset-password", async (req, res) => {
     res.redirect("/reset-password");
   }
 });
-
-// ===== KONIEC SEKCJI RESETU HASŁA =====
 
 app.get("/logout", (req, res) => {
   req.session.destroy((err) => {
@@ -404,6 +405,7 @@ app.post("/change-password", async (req, res) => {
   }
 });
 
+// ===== DODAWANIE POSTA (Z SANITYZACJĄ) =====
 app.post(
   "/add-post",
   upload.single("image"),
@@ -421,16 +423,20 @@ app.post(
     }
 
     const { title, content } = req.body;
+
+    // --- SANITYZACJA TREŚCI ---
+    const cleanContent = sanitizeHtml(content, sanitizeConfig);
+
     const userId = req.session.userId;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
     await db.query(
       "INSERT INTO posts (title, content, image_url, user_id) VALUES ($1, $2, $3, $4)",
-      [title, content, imageUrl, userId]
+      [title, cleanContent, imageUrl, userId],
     );
 
     res.json({ success: true, message: "Post dodany" });
-  }
+  },
 );
 
 app.delete("/delete-post/:id", async (req, res) => {
@@ -451,6 +457,7 @@ app.delete("/delete-post/:id", async (req, res) => {
   res.json({ success: true, message: "Post usunięty" });
 });
 
+// ===== EDYCJA POSTA (Z SANITYZACJĄ) =====
 app.put(
   "/edit-post/:id",
   [
@@ -467,6 +474,11 @@ app.put(
     }
 
     const { title, content } = req.body;
+
+    // --- SANITYZACJA TREŚCI ---
+    const cleanContent = sanitizeHtml(content, sanitizeConfig);
+    // -------------------------
+
     const userId = req.session.userId;
     const postId = req.params.id;
     const { rows } = await db.query("SELECT user_id FROM posts WHERE id = $1", [
@@ -479,11 +491,11 @@ app.put(
 
     await db.query("UPDATE posts SET title = $1, content = $2 WHERE id = $3", [
       title,
-      content,
+      cleanContent,
       postId,
     ]);
     res.json({ success: true, message: "Post zaktualizowany" });
-  }
+  },
 );
 
 app.post("/like-post/:id", async (req, res) => {
@@ -497,7 +509,7 @@ app.post("/like-post/:id", async (req, res) => {
   try {
     const existingLike = await db.query(
       "SELECT * FROM likes WHERE post_id = $1 AND user_id = $2",
-      [postId, userId]
+      [postId, userId],
     );
 
     if (existingLike.rows.length > 0) {
@@ -548,7 +560,6 @@ app.get("/api/posts", async (req, res) => {
 
 // ===== ROUTY DLA KOMENTARZY =====
 
-// Pobieranie komentarzy
 app.get("/api/comments/:postId", async (req, res) => {
   if (!req.session.userId)
     return res.status(401).json({ error: "Brak autoryzacji" });
@@ -571,7 +582,7 @@ app.get("/api/comments/:postId", async (req, res) => {
   }
 });
 
-// Dodawanie komentarza
+// ===== DODAWANIE KOMENTARZA (Z SANITYZACJĄ) =====
 app.post("/api/comments", async (req, res) => {
   if (!req.session.userId)
     return res.status(401).json({ error: "Brak autoryzacji" });
@@ -582,6 +593,9 @@ app.post("/api/comments", async (req, res) => {
     return res.status(400).json({ success: false, error: "Treść pusta" });
   }
 
+  // --- SANITYZACJA TREŚCI ---
+  const cleanContent = sanitizeHtml(content, sanitizeConfig);
+
   try {
     const query = `
       INSERT INTO comments (post_id, user_id, content)
@@ -589,12 +603,16 @@ app.post("/api/comments", async (req, res) => {
       RETURNING id, user_id, content, TO_CHAR(created_at, 'DD.MM.YYYY HH24:MI') as created_at
     `;
 
-    const result = await db.query(query, [postId, req.session.userId, content]);
+    const result = await db.query(query, [
+      postId,
+      req.session.userId,
+      cleanContent,
+    ]);
     const newComment = result.rows[0];
 
     const userRes = await db.query(
       "SELECT name || ' ' || surname as author_name FROM users WHERE id = $1",
-      [req.session.userId]
+      [req.session.userId],
     );
     newComment.author_name = userRes.rows[0].author_name;
 
@@ -605,7 +623,6 @@ app.post("/api/comments", async (req, res) => {
   }
 });
 
-// Usuwanie komentarza
 app.delete("/api/comments/:id", async (req, res) => {
   if (!req.session.userId)
     return res.status(401).json({ error: "Brak autoryzacji" });
@@ -628,7 +645,7 @@ app.delete("/api/comments/:id", async (req, res) => {
   }
 });
 
-// Edycja komentarza
+// ===== EDYCJA KOMENTARZA (Z SANITYZACJĄ) =====
 app.put("/api/comments/:id", async (req, res) => {
   if (!req.session.userId)
     return res.status(401).json({ error: "Brak autoryzacji" });
@@ -638,6 +655,10 @@ app.put("/api/comments/:id", async (req, res) => {
 
   if (!content || !content.trim())
     return res.status(400).json({ error: "Treść pusta" });
+
+  // --- SANITYZACJA TREŚCI ---
+  const cleanContent = sanitizeHtml(content, sanitizeConfig);
+  // -------------------------
 
   try {
     const check = await db.query("SELECT user_id FROM comments WHERE id = $1", [
@@ -649,7 +670,7 @@ app.put("/api/comments/:id", async (req, res) => {
       return res.status(403).json({ error: "Brak uprawnień" });
 
     await db.query("UPDATE comments SET content = $1 WHERE id = $2", [
-      content,
+      cleanContent,
       commentId,
     ]);
     res.json({ success: true });
@@ -660,5 +681,5 @@ app.put("/api/comments/:id", async (req, res) => {
 });
 
 app.listen(port, () =>
-  console.log(`Serwer działa na http://localhost:${port}`)
+  console.log(`Serwer działa na http://localhost:${port}`),
 );
